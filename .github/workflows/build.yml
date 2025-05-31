@@ -1,158 +1,100 @@
-name: Build Controller
-
-permissions:
-  contents: write # Allow writing to repository contents (for pushing tags)
-  actions: write # Allows triggering actions
-
+name: Build Kernel
+run-name: Build alioth/apollo with KernelSU
 on:
   workflow_dispatch:
     inputs:
-      build_kernel_op8_oos131_a13:
-        description: "Build Kernel OnePlus 8 (OOS13.1)?"
+      phone:
+        description: '选择手机型号：'
         required: true
-        type: boolean
-        default: true
-      build_kernel_k20p_aosp_a15:
-        description: "Build Kernel Redmi K20Pro (Soviet-Star-OSS)(Based-AOSP A15)?"
-        required: true
-        type: boolean
-        default: true
-      build_kernel_mix2s_evox_a15:
-        description: "Build Kernel Xiaomi Mix2s (EVOX-A15-Official)?"
-        required: true
-        type: boolean
-        default: true
-      build_kernel_op8_nameless15_a15:
-        description: "Build Kernel OnePlus 8 (Nameless 15)?"
-        required: true
-        type: boolean
-        default: true
-
+        default: 'alioth'
+        type: choice
+        options:
+          - alioth
+          - apollo
+      version:
+        description: '自定义版本名（如perf-xxx）可为空（则为n0kernel）'
+        required: false
+        type: string
 jobs:
-  build_kernel_k20p_aosp_a15:
-    uses: ./.github/workflows/build_kernel_k20p_aosp_a15.yml
-    secrets: inherit
-    if: ${{ inputs.build_kernel_k20p_aosp_a15 }}
-  build_kernel_mix2s_evox_a15:
-    uses: ./.github/workflows/build_kernel_mix2s_evox_a15.yml
-    secrets: inherit
-    if: ${{ inputs.build_kernel_mix2s_evox_a15 }}
-  build_kernel_op8_nameless15_a15:
-    uses: ./.github/workflows/build_kernel_op8_nameless15_a15.yml
-    secrets: inherit
-    if: ${{ inputs.build_kernel_op8_nameless15_a15 }}
-  
-  trigger-release:
-    runs-on: ubuntu-latest
-    needs:
-      - build_kernel_op8_oos131_a13
-      - build_kernel_k20p_aosp_a15
-      - build_kernel_mix2s_evox_a15
-      - build_kernel_mi10s_aosp_a15
-    if: ${{ inputs.make_release }}
+  build_job:
+    runs-on: ubuntu-22.04
     env:
-      REPO_OWNER: JackA1ltman
-      REPO_NAME: NonGKI_Kernel_Build
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      RELEASE_NAME: "NonGKI Kernel Pre-built"
-      RELEASE_NOTES: |
-        Below is the codename reference table. Please select the image or archive you need based on this table.
-
-        | Device Name | Codename | Kernel | System | Android | Method | KernelSU | SuSFS | LXC | VFS |
-        |----------|----------|----------|----------|----------|----------|----------|----------|----------|----------|
-        | OnePlus 8 (CN) | instantnoodle | 4.19 | OxygenOS/ColorOS 13.1 | 13 | AnyKernel3 | Magic | ✅ | ❌ | ❌ |
-        | OnePlus 8 (All) | instantnoodle | 4.19 | Nameless 15 | 15 | AnyKernel3 | rsuntk | ✅ | ❌ | ❌ |
-        | Xiaomi MIX2S (CN) | polaris | 4.9 | Evolution X 10.2.1 | 15 | Boot Image | SukiSU | ✅ | ❌ | ❌ |
-        | Redmi K20 Pro (CN) | raphael | 4.14 | Based-AOSP | 15 | AnyKernel3 | rsuntk | ✅ | ❌ | ❌ |
-        | Redmi K40| Alioth | 4.19 | Based-AOSP | 15 | AnyKernel3 | rsuntk | ✅ | ❌ | ❌ |
-
-        - OnePlus 8 (CN) has been tested and can be used on the OnePlus 9R. Theoretically, it should also work on the OnePlus 8T/8Pro.
-        - The Black Shark 4 cannot patch SuSFS due to a kernel defect (missing ANDROID_KABI). To enhance stealth and security, it is the first device to switch from the regular manual hook to [VFS Hook](https://github.com/backslashxx/KernelSU/issues/5).
-        - Samsung S20 5G supported **Snapdragon** only，Exynos doesn't try flash it.
-        - The KernelSU version is for reference only. It is normal for the KernelSU version embedded in SUSFS to be lower.
-
+      CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
+      CCACHE_NOHASHDIR: "true"
+      CCACHE_HARDLINK: "true"
+      CI: "false"
     steps:
-      # Checkout the code
-      - name: Checkout code
-        uses: actions/checkout@v3
 
-      # Download Artifacts for A12 (Only if A12 Build is successful or input is true or empty)
-      - name: Download Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: ./downloaded-artifacts
-
-      # Get the Latest Tag from GitHub
-      - name: Generate and Create New Tag
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: 1.Set clang
         run: |
-          # Fetch the latest tag from GitHub (this is the latest tag based on the GitHub API)
-          LATEST_TAG=$(gh api repos/$REPO_OWNER/$REPO_NAME/tags --jq '.[0].name')
-          if [ -z "$LATEST_TAG" ]; then
-            LATEST_TAG="v1.3" # if have no any releases.
+          mkdir -p $GITHUB_WORKSPACE/kernel_workspace
+          cd $GITHUB_WORKSPACE/kernel_workspace
+          wget -q https://github.com/ZyCromerZ/Clang/releases/download/18.0.0git-20240124-release/Clang-18.0.0git-20240124.tar.gz
+          mkdir -p clang
+          tar -xzf Clang-18.0.0git-20240124.tar.gz -C clang
+
+      - name: 2.repo source and patches
+        run: |
+          cd $GITHUB_WORKSPACE/kernel_workspace
+          git clone https://github.com/sonako0122/kernel_sm8250 --depth=1 android_kernel
+          git clone https://github.com/osm0sis/AnyKernel3.git AnyKernel3
+          git clone https://github.com/sonako0122/NonGKI_Kernel_Build.git patches
+
+      - name: 3.Add Rksu
+        run: |
+          cd $GITHUB_WORKSPACE/kernel_workspace/android_kernel
+          curl -LSs "https://raw.githubusercontent.com/rsuntk/KernelSU/main/kernel/setup.sh" | bash -s main
+
+      - name: 4.Setup rksu
+        run: |
+          ls
+          echo "进入源码目录"
+          cd $GITHUB_WORKSPACE/kernel_workspace/android_kernel
+          cp $GITHUB_WORKSPACE/kernel_workspace/patches/Patches/* .
+          patch -p1 < non-kprobes.patch
+        
+      - name: 5.Building kernel
+        run: |
+          export PATH=$GITHUB_WORKSPACE/kernel_workspace/clang/bin:$PATH
+          echo "Updated PATH: $PATH"
+          clang --version
+          
+          cd $GITHUB_WORKSPACE/kernel_workspace/android_kernel
+          # 自定义版本
+          if [ ! -z ${{ inputs.version }} ]; then
+            echo "不为空"
+            sed -i '$s|echo "\$res"|echo "-${{ inputs.version }}"|' ./scripts/setlocalversion
+          else
+            echo "输入为空"
           fi
 
-          NEW_TAG=$(echo "$LATEST_TAG" | awk -F'-r' '{suffix=$2; if (!suffix) suffix=0; suffix++; printf "%s-r%d", $1, suffix}')
-          # NEW_TAG="v1.3-r1"
+          if [ ${{ inputs.phone }} = 'alioth' ]; then
+            echo "选择redmi k40"
+            DEFCONFIG=vendor/alioth_defconfig
+          elif [ ${{ inputs.phone }} = 'apollo' ]; then
+            echo "选择redmi k30su"
+            DEFCONFIG=vendor/apollo_defconfig
+          else
+            echo "输入错误"
+          fi
 
-          # Output the new tag to be used
-          echo "New tag: $NEW_TAG"
+          echo "当前配置为 $DEFCONFIG"
 
-          # Set the new tag as an environment variable to be used in later steps
-          TIME=$(date +"%Y-%m-%d %H:%M.%S")
-          echo "TIME=$TIME" >> $GITHUB_ENV
-          echo "NEW_TAG=${NEW_TAG}" >> $GITHUB_ENV
+          make -j$(nproc --all) CC=clang O=out ARCH=arm64 CLANG_TRIPLE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 CROSS_COMPILE=aarch64-buildroot-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-androideabi- $DEFCONFIG
+          make -j8 CC=clang O=out ARCH=arm64 CLANG_TRIPLE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi-    
+      
+      - name: 6.Cp bootfile
+        run: |
+            cd $GITHUB_WORKSPACE/kernel_workspace/android_kernel/out/arch/arm64/boot
+            ls
+            strings Image | grep "Linux version"
+            mkdir $GITHUB_WORKSPACE/kernel_workspace/Anykernel3/kernels/
+            mkdir $GITHUB_WORKSPACE/kernel_workspace/Anykernel3/kernels/miui/
+            cp Image $GITHUB_WORKSPACE/kernel_workspace/Anykernel3/kernels/miui/
 
-          # Create the tag in the repository
-          git tag $NEW_TAG
-          git push --tags
-
-          # Get KernelSU version
-          git clone -b magic https://github.com/backslashxx/KernelSU.git KernelSU-Magic
-          KSU_MAGIC_VERSION=$(cd KernelSU-Magic && expr $(/usr/bin/git rev-list --count HEAD) + 10200 - 32)
-          git clone -b main https://github.com/rsuntk/KernelSU.git KernelSU-rsuntk
-          KSU_RSUNTK_VERSION=$(cd KernelSU-rsuntk && expr $(/usr/bin/git rev-list --count HEAD) + 10200)
-          git clone -b non-gki https://github.com/lightsummer233/KernelSU.git KernelSU-lightsummer233
-          KSU_LIGHTSUMMER233_VERSION=$(cd KernelSU-lightsummer233 && expr $(/usr/bin/git rev-list --count HEAD) + 10200)
-          git clone -b susfs-dev https://github.com/ShirkNeko/KernelSU.git KernelSU-SukiSU
-          KSU_SUKISU_VERSION=$(cd KernelSU-SukiSU && expr $(/usr/bin/git rev-list --count HEAD) + 10200)
-
-          # Input release note
-          echo "RELEASE_NOTES<<EOF" >> $GITHUB_ENV
-          echo "$RELEASE_NOTES" >> $GITHUB_ENV
-          # echo "[KernelSU-Next](https://github.com/KernelSU-Next/KernelSU-Next) Version: $KSU_NEXT_VERSION  " >> $GITHUB_ENV
-          echo "[KernelSU-Magic](https://github.com/backslashxx/KernelSU) Version: $KSU_MAGIC_VERSION  " >> $GITHUB_ENV
-          echo "[KernelSU-rsuntk](https://github.com/rsuntk/KernelSU) Version: $KSU_RSUNTK_VERSION  " >> $GITHUB_ENV
-          echo "[KernelSU-lightsummer233](https://github.com/lightsummer233/KernelSU) Version: $KSU_LIGHTSUMMER233_VERSION  " >> $GITHUB_ENV
-          echo "[KernelSU-SukiSU](https://github.com/ShirkNeko/KernelSU) Version: $KSU_SUKISU_VERSION  " >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
-
-      # Create GitHub Release and upload files if make_release is true
-      - name: Create GitHub Release
-        uses: actions/create-release@v1
+      - name: 7.Upload
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: ${{ env.NEW_TAG }}
-          prerelease: false
-          release_name: "${{ env.RELEASE_NAME }} ${{ env.TIME }}"
-          body: ${{ env.RELEASE_NOTES }}
-
-      - name: Upload Release Assets Dynamically
-        run: |
-          # Loop through all files in the downloaded-artifacts directory
-          for file in ./downloaded-artifacts/Kernel-*/*; do
-              # Skip directories
-              if [ -d "$file" ]; then
-                  continue
-              fi
-
-              # Upload the file to the GitHub release
-              echo "Uploading $file..."
-              gh release upload ${{ env.NEW_TAG }} "$file"
-          done
-
-      # Display Files Uploaded
-      - name: Display Files Uploaded
-        run: |
-          echo "GitHub release created with the following files:"
-          ls ./downloaded-artifacts/**/*
+          name: ${{ inputs.phone }}-KernelSU-Next-${{ inputs.susfs }}-AnyKernel3
+          path: kernel_workspace/Anykernel3/*
+          retention-days: 3
