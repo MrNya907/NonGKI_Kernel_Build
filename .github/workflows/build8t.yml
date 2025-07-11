@@ -1,4 +1,4 @@
-name: Build Kernel OnePlus 8T (AOSP A15 with KSU & SUSFS)
+name: Build Kernel OnePlus 8T (ColorOS A15 with KSU & SUSFS)
 
 on:
   workflow_dispatch:
