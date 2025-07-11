@@ -107,11 +107,11 @@ jobs:
               git clone "$AK3_SOURCE" -b "$AK3_BRANCH" Anykernel3 --depth=1
             fi
           elif [[ "$PACK_METHOD" == "MKBOOTIMG" ]]; then
-            cd "$GITHUB_WORKSPACE"
-            git clone https://android.googlesource.com/platform/system/tools/mkbootimg "$GITHUB_WORKSPACE/mkboottools" -b main-kernel-build-2024 --depth=1
-            wget "$BOOT_SOURCE" -O "$GITHUB_WORKSPACE/boot_source_${DEVICE_NAME}.img"
-            cd device_kernel
-          else
+  cd "$GITHUB_WORKSPACE"
+  echo "Using MKBOOTIMG method, skipping external boot.img download"
+  git clone https://android.googlesource.com/platform/system/tools/mkbootimg "$GITHUB_WORKSPACE/mkboottools" -b main-kernel-build-2024 --depth=1
+  cd device_kernel
+else
             echo "Unknown PACK_METHOD: $PACK_METHOD"
             exit 1
           fi
