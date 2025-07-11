@@ -122,5 +122,4 @@ jobs:
           KERNEL_VERSION: ${{ env.KERNEL_VERSION }}
           AK3_SOURCE: ${{ env.AK3_SOURCE }}
           AK3_BRANCH: ${{ env.AK3_BRANCH }}
-          BOOT_SOURCE: ${{ env.BOOT_SOURCE }}
           DEVICE_NAME: ${{ env.DEVICE_NAME }}
